@@ -41,7 +41,11 @@ internal sealed class RedeSeguraApp : Form
     private readonly Label messagePreview;
     private readonly FlowLayoutPanel resultDetails;
     private readonly Panel resultCard;
-    private readonly FlowLayoutPanel content;
+    private readonly TableLayoutPanel content;
+    private readonly Panel body;
+    private readonly TableLayoutPanel workspace;
+    private readonly TableLayoutPanel inputColumn;
+    private readonly Panel resultScroll;
     private readonly Button themeButton;
     private readonly Panel resultAccent;
     private readonly Timer fadeTimer;
@@ -55,10 +59,11 @@ internal sealed class RedeSeguraApp : Form
     {
         Text = "Rede Segura";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(760, 700);
+        MinimumSize = new Size(800, 650);
         ClientSize = new Size(920, 850);
         BackColor = BackgroundColor;
         Font = new Font("Segoe UI", 10F);
+        AutoScaleMode = AutoScaleMode.Dpi;
         KeyPreview = true;
         Opacity = 0;
 
@@ -76,24 +81,75 @@ internal sealed class RedeSeguraApp : Form
             DestroyIcon(iconHandle);
         }
 
-        content = new FlowLayoutPanel
+        content = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            AutoScroll = true,
+            ColumnCount = 1,
+            RowCount = 3,
+            BackColor = BackgroundColor,
+            Margin = new Padding(0),
+            Tag = "background"
+        };
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 92F));
+        content.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        Controls.Add(content);
+        SizeChanged += delegate { ResizeContent(); };
+
+        body = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = BackgroundColor,
+            Padding = new Padding(24, 20, 24, 16),
+            Tag = "background"
+        };
+        content.Controls.Add(body, 0, 1);
+
+        workspace = new TableLayoutPanel
+        {
+            BackColor = BackgroundColor,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            RowCount = 1,
+            ColumnCount = 2,
+            Tag = "background"
+        };
+        body.Controls.Add(workspace);
+        body.SizeChanged += delegate { ResizeContent(); };
+
+        inputColumn = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = BackgroundColor,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(0, 0, 12, 0),
+            Padding = new Padding(0),
+            Tag = "background"
+        };
+        inputColumn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        inputColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        inputColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        workspace.Controls.Add(inputColumn, 0, 0);
+
+        FlowLayoutPanel introduction = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             BackColor = BackgroundColor,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
-            Padding = new Padding(28, 20, 28, 28),
+            Margin = new Padding(0, 0, 0, 14),
+            Padding = new Padding(0),
             Tag = "background"
         };
-        content.SizeChanged += delegate { ResizeContent(); };
-        Controls.Add(content);
 
         Panel header = new Panel
         {
             BackColor = BrandDarkColor,
-            Height = 92,
-            Margin = new Padding(0, 0, 0, 28),
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
             Padding = new Padding(22, 18, 16, 18),
             Tag = "header"
         };
@@ -135,23 +191,25 @@ internal sealed class RedeSeguraApp : Form
         header.Controls.Add(themeButton);
         header.Controls.Add(brandInfo);
         header.Controls.Add(logo);
-        content.Controls.Add(header);
+        content.Controls.Add(header, 0, 0);
 
         Label eyebrow = MakeLabel("ANÁLISE PRIVADA NO SEU DISPOSITIVO", 9F, BrandColor, true);
         eyebrow.Margin = new Padding(2, 0, 0, 8);
-        content.Controls.Add(eyebrow);
+        introduction.Controls.Add(eyebrow);
 
         Label title = MakeLabel("Analise com calma. Decida com segurança.", 25F, TextColor, true);
         title.Margin = new Padding(0, 0, 0, 7);
-        content.Controls.Add(title);
+        introduction.Controls.Add(title);
 
         Label description = MakeLabel(
             "Cole uma SMS, email ou mensagem para receber uma avaliação de risco, os sinais encontrados e passos práticos a seguir.",
             10.5F, MutedColor, false);
         description.Margin = new Padding(0, 0, 0, 23);
-        content.Controls.Add(description);
+        introduction.Controls.Add(description);
+        inputColumn.Controls.Add(introduction, 0, 0);
 
         inputCard = MakeCard(300);
+        inputCard.Dock = DockStyle.Top;
         inputCard.Controls.Add(MakeLabel("Mensagem recebida", 15F, TextColor, true, 20, 18));
         inputCard.Controls.Add(MakeLabel("A análise é privada. Não inclua palavras-passe, códigos ou dados bancários.", 9.5F, MutedColor, false, 20, 47));
 
@@ -167,6 +225,7 @@ internal sealed class RedeSeguraApp : Form
             BorderStyle = BorderStyle.FixedSingle,
             Location = new Point(20, 77),
             Size = new Size(650, 112),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             Tag = "input",
             AccessibleName = "Mensagem para analisar",
             AccessibleDescription = "Cole ou escreva uma mensagem suspeita"
@@ -206,6 +265,7 @@ internal sealed class RedeSeguraApp : Form
         clearButton.FlatAppearance.BorderSize = 1;
         clearButton.Location = new Point(160, 191);
         clearButton.Size = new Size(96, 36);
+        clearButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         clearButton.AccessibleName = "Limpar mensagem";
         clearButton.Click += delegate
         {
@@ -221,14 +281,16 @@ internal sealed class RedeSeguraApp : Form
         checkButton.FlatAppearance.MouseDownBackColor = BrandDarkColor;
         checkButton.Location = new Point(20, 237);
         checkButton.Size = new Size(650, 48);
+        checkButton.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         checkButton.AccessibleName = "Enviar mensagem para análise";
         checkButton.Click += delegate { AnalyzeMessage(); };
         inputCard.Controls.Add(checkButton);
         AcceptButton = checkButton;
-        content.Controls.Add(inputCard);
+        inputColumn.Controls.Add(inputCard, 0, 1);
 
         resultCard = MakeCard(300);
-        resultCard.Margin = new Padding(0, 0, 0, 14);
+        resultCard.Dock = DockStyle.Fill;
+        resultCard.Margin = new Padding(12, 0, 0, 0);
         resultCard.Controls.Add(MakeLabel("RESULTADO DA ANÁLISE", 9F, MutedColor, true, 20, 19));
 
         resultAccent = new Panel
@@ -267,7 +329,7 @@ internal sealed class RedeSeguraApp : Form
 
         resultDetails = new FlowLayoutPanel
         {
-            Location = new Point(20, 213),
+            Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.TopDown,
@@ -276,25 +338,43 @@ internal sealed class RedeSeguraApp : Form
             Padding = new Padding(0),
             Tag = "card-content"
         };
-        resultDetails.SizeChanged += delegate
+        resultScroll = new Panel
         {
-            resultCard.Height = Math.Max(300, resultDetails.Bottom + 22);
-            resultAccent.Height = resultCard.Height;
+            Location = new Point(20, 213),
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+            AutoScroll = true,
+            BackColor = Color.White,
+            Tag = "card"
         };
-        resultCard.Controls.Add(resultDetails);
-        content.Controls.Add(resultCard);
+        resultScroll.Controls.Add(resultDetails);
+        resultCard.Controls.Add(resultScroll);
+        workspace.Controls.Add(resultCard, 1, 0);
 
         Label privacy = MakeLabel(
             "PRIVACIDADE  ·  A análise é feita neste dispositivo. O texto não é enviado nem guardado.",
             9F, MutedColor, false);
-        privacy.Margin = new Padding(2, 4, 0, 8);
-        content.Controls.Add(privacy);
+        privacy.Margin = new Padding(0, 4, 0, 4);
 
         Label disclaimer = MakeLabel(
             "A análise procura padrões comuns e pode enganar-se. Confirme mensagens importantes sempre por um contacto oficial que já conhece.",
             8.5F, MutedColor, false);
-        disclaimer.Margin = new Padding(2, 0, 0, 16);
-        content.Controls.Add(disclaimer);
+        disclaimer.Margin = new Padding(0, 0, 0, 4);
+
+        FlowLayoutPanel footer = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = BackgroundColor,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Padding = new Padding(28, 8, 28, 8),
+            Margin = new Padding(0),
+            Tag = "background"
+        };
+        footer.Controls.Add(privacy);
+        footer.Controls.Add(disclaimer);
+        content.Controls.Add(footer, 0, 2);
 
         fadeTimer = new Timer { Interval = 15 };
         fadeTimer.Tick += delegate
@@ -356,47 +436,131 @@ internal sealed class RedeSeguraApp : Form
 
     private void ResizeContent()
     {
-        int width = Math.Max(680, content.ClientSize.Width - content.Padding.Horizontal - 4);
-        foreach (Control control in content.Controls)
+        if (body == null || workspace == null || inputColumn == null ||
+            resultCard == null || messageInput == null)
         {
-            Panel panel = control as Panel;
-            if (panel != null && panel != resultDetails)
+            return;
+        }
+
+        float dpiScale = 1F;
+        using (Graphics graphics = CreateGraphics())
+        {
+            dpiScale = graphics.DpiX / 96F;
+        }
+
+        int availableWidth = Math.Max(0, body.ClientSize.Width - body.Padding.Horizontal);
+        int availableHeight = Math.Max(0, body.ClientSize.Height - body.Padding.Vertical);
+        int breakpoint = (int)Math.Round(1040F * dpiScale);
+        bool useColumns = availableWidth >= breakpoint;
+        int workspaceWidth = Math.Min(availableWidth, (int)Math.Round(1680F * dpiScale));
+
+        workspace.SuspendLayout();
+        workspace.Controls.Clear();
+        workspace.ColumnStyles.Clear();
+        workspace.RowStyles.Clear();
+        workspace.Margin = new Padding(0);
+        workspace.Width = workspaceWidth;
+        workspace.Location = new Point(
+            Math.Max(0, (availableWidth - workspaceWidth) / 2),
+            0);
+
+        if (useColumns)
+        {
+            body.AutoScroll = false;
+            workspace.ColumnCount = 2;
+            workspace.RowCount = 1;
+            workspace.Dock = DockStyle.None;
+            workspace.Anchor = AnchorStyles.Top;
+            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 46F));
+            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 54F));
+            workspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            workspace.Height = availableHeight;
+            inputColumn.Margin = new Padding(0, 0, 12, 0);
+            resultCard.Margin = new Padding(12, 0, 0, 0);
+            workspace.Controls.Add(inputColumn, 0, 0);
+            workspace.Controls.Add(resultCard, 1, 0);
+        }
+        else
+        {
+            body.AutoScroll = true;
+            workspace.ColumnCount = 1;
+            workspace.RowCount = 2;
+            workspace.Dock = DockStyle.None;
+            workspace.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            FlowLayoutPanel intro = inputColumn.Controls[0] as FlowLayoutPanel;
+            int introHeight = intro == null
+                ? 0
+                : intro.GetPreferredSize(new Size(workspaceWidth, 0)).Height;
+            int inputColumnHeight = introHeight + 14 + inputCard.Height;
+            int resultHeight = Math.Max(320, (int)Math.Round(380F * dpiScale));
+            workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, inputColumnHeight + 20));
+            workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, resultHeight));
+            int stackedHeight = inputColumnHeight + resultHeight + 20;
+            workspace.Height = Math.Max(availableHeight, stackedHeight);
+            inputColumn.Height = inputColumnHeight;
+            inputColumn.Margin = new Padding(0, 0, 0, 20);
+            resultCard.Margin = new Padding(0);
+            workspace.Controls.Add(inputColumn, 0, 0);
+            workspace.Controls.Add(resultCard, 0, 1);
+        }
+
+        workspace.ResumeLayout(true);
+
+        int inputWidth = Math.Max(200, inputCard.ClientSize.Width - inputCard.Padding.Horizontal - 40);
+        messageInput.Width = inputWidth;
+        checkButton.Width = inputWidth;
+        clearButton.Location = new Point(
+            Math.Max(20, inputCard.ClientSize.Width - clearButton.Width - 20),
+            191);
+        characterCount.MaximumSize = new Size(Math.Max(100, inputWidth - 116), 0);
+
+        int resultWidth = Math.Max(200, resultCard.ClientSize.Width - resultCard.Padding.Horizontal - 40);
+        int detailHeight = Math.Max(80, resultCard.ClientSize.Height - 235);
+        resultScroll.Size = new Size(resultWidth, detailHeight);
+        resultAccent.Height = resultCard.ClientSize.Height;
+        statusBadge.Width = Math.Min(330, resultWidth);
+        resultHeading.MaximumSize = new Size(resultWidth, 0);
+        resultSummary.MaximumSize = new Size(resultWidth, 0);
+        messagePreview.MaximumSize = new Size(resultWidth, 48);
+        resultDetails.Width = resultWidth;
+        foreach (Control item in resultDetails.Controls)
+        {
+            item.MaximumSize = new Size(resultWidth, 0);
+            item.Width = resultWidth;
+        }
+
+        foreach (Control control in inputColumn.Controls)
+        {
+            FlowLayoutPanel flow = control as FlowLayoutPanel;
+            if (flow != null)
             {
-                panel.Width = width;
-            }
-            else
-            {
-                Label label = control as Label;
-                if (label != null)
+                foreach (Control item in flow.Controls)
                 {
-                    label.MaximumSize = new Size(width, 0);
+                    Label label = item as Label;
+                    if (label != null)
+                    {
+                        label.MaximumSize = new Size(Math.Max(200, workspaceWidth - 16), 0);
+                    }
                 }
             }
         }
 
-        foreach (Control control in content.Controls)
+        Control footer = content.GetControlFromPosition(0, 2);
+        FlowLayoutPanel footerFlow = footer as FlowLayoutPanel;
+        if (footerFlow != null)
         {
-            Panel card = control as Panel;
-            if (card != null && card.Controls.Contains(messageInput))
+            foreach (Control item in footerFlow.Controls)
             {
-                messageInput.Width = Math.Max(560, width - 40);
-                clearButton.Location = new Point(Math.Max(20, width - 116), 191);
-                characterCount.MaximumSize = new Size(Math.Max(120, width - 160), 0);
-                checkButton.Width = Math.Max(560, width - 40);
-            }
-            if (card != null && card.Controls.Contains(resultDetails))
-            {
-                int detailWidth = Math.Max(560, width - 40);
-                resultDetails.MaximumSize = new Size(detailWidth, 0);
-                messagePreview.MaximumSize = new Size(detailWidth, 48);
-                resultSummary.MaximumSize = new Size(detailWidth, 0);
-                statusBadge.Width = Math.Min(330, detailWidth);
-                foreach (Control item in resultDetails.Controls)
+                Label label = item as Label;
+                if (label != null)
                 {
-                    item.MaximumSize = new Size(detailWidth, 0);
+                    label.MaximumSize = new Size(Math.Max(240, content.ClientSize.Width - footerFlow.Padding.Horizontal), 0);
                 }
             }
         }
+
+        content.PerformLayout();
     }
 
     private void ToggleTheme()
@@ -629,7 +793,7 @@ internal sealed class RedeSeguraApp : Form
         AddResultSection("LIMITAÇÕES", analysis.Limitations.Select(item => "• " + item));
 
         ApplyTheme();
-        content.ScrollControlIntoView(resultHeading);
+        body.ScrollControlIntoView(resultCard);
     }
 
     private void AddResultSection(string heading, IEnumerable<string> items)

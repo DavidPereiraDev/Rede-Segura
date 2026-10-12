@@ -314,15 +314,17 @@ internal static class ScamAnalyzer
         @"\b(?:mas|por[eé]m|contudo)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private const string PaymentActionPattern =
-        @"envie(?:-me)?|envia(?:-me)?|enviem|enviar|manda(?:-me)?|mande(?:-me)?|mandem|mandar|transfira(?:-me)?|transfere|transfiram|transferir|pague|paga|paguem|pagar|deposite(?:-me)?|deposita|depositem|depositar";
+        @"envi(?:e|a|ar|ando|nando|am|em)(?:-me)?|manda(?:-me)?|mande(?:-me)?|mandem|mandar|transfira(?:-me)?|transfere|transfiram|transferr?(?:ir|indo|e|a|am|em)|trasnfer(?:ir|indo)|pague|paga|paguem|pagar|pagando|deposite(?:-me)?|deposita|depositem|depositar";
     private const string MoneyAmountPattern =
         @"[$€£]\s*\d+(?:[.,]\d{1,3})*|\d+(?:[.,]\d{1,3})*\s*(?:[$€£]|\b(?:usd|eur|brl|gbp)\b)|\d+(?:[.,]\d{1,3})*\s+\b(?:d[oó]lares?|euros?|reais?)\b";
-    private static readonly Regex PaymentActionAndAmount = new Regex(
+    private const string PaymentActionAndAmountPattern =
         @"\b(?:" + PaymentActionPattern + @")\b.{0,35}(?:" + MoneyAmountPattern +
-        @")|(?:" + MoneyAmountPattern + @").{0,35}\b(?:" + PaymentActionPattern + @")\b",
+        @")|(?:" + MoneyAmountPattern + @").{0,35}\b(?:" + PaymentActionPattern + @")\b";
+    private static readonly Regex PaymentActionAndAmount = new Regex(
+        PaymentActionAndAmountPattern,
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex PaymentCondition = new Regex(
-        @"\b(?:para|pra)\s+(?:poder\s+)?(?:continuar|prosseguir|desbloquear|receber|ativar|libertar|liberar|retirar|sacar|confirmar|regularizar|manter|concluir)\b",
+        @"\b(?:para|pra)\s+(?:poder\s+)?(?:continuar|prosseguir|desbloquear|receber|ativar|usar|utilizar|libertar|liberar|retirar|sacar|confirmar|regularizar|manter|concluir)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex OfficialAppContext = new Regex(
         @"\b(?:aplicativo|aplica[cç][aã]o|app|site|portal) oficial\b",
@@ -339,7 +341,7 @@ internal static class ScamAnalyzer
             @"\b(?:imediatamente|agora mesmo|nos pr[oó]ximos minutos|em \d+ minutos|ultimas horas|[uú]ltima oportunidade|n[aã]o desligue|n[aã]o consulte|n[aã]o contacte|sem verificar|sem confirmar)\b",
             "A mensagem tenta impedir verificações independentes ou impõe um prazo excepcionalmente curto."),
         MakeRule("payment-request", "Pedido de pagamento ou transferência", 3,
-            @"\b(?:pague|pagar|paga|transfira|fa[cç]a (?:(?:um|uma) )?(?:pix|pagamento|dep[oó]sito|transfer[eê]ncia)|realize (?:o )?pagamento|efetue (?:o )?pagamento|envie (?:o )?dinheiro|manda (?:o )?dinheiro|taxa (?:de )?(?:liberta[cç][aã]o|entrega|envio|alfand[eê]ga|pendente)|taxa para liberar|(?:d[áa](?:-me|\s+me)|dame|manda(?:-me)?|envia(?:-me)?|send\s+me|give\s+me)\s+(?:(?:[$€£]\s*)?\d+(?:[.,]\d{1,2})?(?:\s*(?:[$€£]|\b(?:euros?|d[oó]lares?|usd|eur|gbp|reais?|brl)\b))?|\b(?:dinheiro|money|plata)\b))(?=\W|$)",
+            @"\b(?:pague|pagar|paga|transfira|fa[cç]a (?:(?:um|uma) )?(?:pix|pagamento|dep[oó]sito|transfer[eê]ncia)|realize (?:o )?pagamento|efetue (?:o )?pagamento|envie (?:o )?dinheiro|manda (?:o )?dinheiro|taxa (?:de )?(?:liberta[cç][aã]o|entrega|envio|alfand[eê]ga|pendente)|taxa para liberar|(?:d[áa](?:-me|\s+me)|dame|manda(?:-me)?|envia(?:-me)?|send\s+me|give\s+me)\s+(?:(?:[$€£]\s*)?\d+(?:[.,]\d{1,2})?(?:\s*(?:[$€£]|\b(?:euros?|d[oó]lares?|usd|eur|gbp|reais?|brl)\b))?|\b(?:dinheiro|money|plata)\b))(?=\W|$)|" + PaymentActionAndAmountPattern,
             "Pede uma transferência, pagamento ou taxa; o valor mencionado, isoladamente, não é contado como fraude."),
         MakeRule("reward-promise", "Promessa de prémio ou recompensa", 2,
             @"\b(?:ganhou|ganhaste|foi selecionad[ao]|foi contemplad[ao]|resgate (?:o )?pr[eê]mio|reclame (?:o )?pr[eê]mio|dinheiro gr[aá]tis|reembolso inesperado)\b",
