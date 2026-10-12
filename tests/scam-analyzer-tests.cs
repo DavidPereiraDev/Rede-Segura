@@ -48,8 +48,16 @@ internal static class ScamAnalyzerTests
         Case("PT conditional payment euro suffix", "Transfira 43€ para receber o documento.", ScamRiskLevel.Moderate),
         Case("PT conditional payment decimal euros", "Pague 1,95 € para ativar o serviço.", ScamRiskLevel.Moderate),
         Case("PT conditional payment deposit EUR", "Deposite 43 EUR para libertar a encomenda.", ScamRiskLevel.Moderate),
+        Case("PT app payment mixed-case gerund", "continue enviAnDo 45$ para usar o nosso app", ScamRiskLevel.Moderate),
+        Case("PT conditional payment infinitive USD", "Enviar 45 USD para continuar a usar a aplicação.", ScamRiskLevel.Moderate),
+        Case("PT conditional payment prefix amount", "Envie $45 para desbloquear a conta.", ScamRiskLevel.Moderate),
+        Case("PT conditional payment gerund euros", "Pagando 45€ para ativar o serviço.", ScamRiskLevel.Moderate),
+        Case("PT conditional payment transfer typo", "Transferrindo 45 EUR para receber acesso.", ScamRiskLevel.Moderate),
+        Case("PT conditional payment verb typo", "Continue envinando 45 euros para usar o app.", ScamRiskLevel.Moderate),
         Case("PT legitimate conditional invoice", "A fatura de 43 EUR está disponível. Pague pela aplicação oficial para continuar.", ScamRiskLevel.Low),
         Case("PT legitimate conditional subscription", "Pague 1,95 € pela aplicação oficial para manter a subscrição ativa.", ScamRiskLevel.Low),
+        Case("PT legitimate service payment", "Pague 12 EUR pela mensalidade do serviço através da aplicação oficial para continuar.", ScamRiskLevel.Low),
+        Case("PT legitimate purchase", "Pague 45 euros pela compra através do site oficial.", ScamRiskLevel.Low),
         Case("PT amount without payment request", "O saldo atual é 43$ e a fatura de 1,95 € foi liquidada.", ScamRiskLevel.Low),
         Case("PT past payment is not a request", "Enviei 43$ para prosseguir com a compra.", ScamRiskLevel.Low),
         Case("PT suspicious unknown link", "Clique aqui para consultar os detalhes da sua conta: https://secure-login.example.xyz/validar", ScamRiskLevel.Inconclusive),
@@ -214,6 +222,7 @@ internal static class ScamAnalyzerTests
 
         ScamAnalysisResult conditionalPayment = ScamAnalyzer.Analyze("para continuar envie 43$");
         if (conditionalPayment.RiskLevel != ScamRiskLevel.Moderate ||
+            conditionalPayment.Score != 5 ||
             !conditionalPayment.Signals.Any(signal => signal.Id == "payment-request") ||
             !conditionalPayment.Signals.Any(signal =>
                 signal.Id == "payment-condition-combination" &&
@@ -222,6 +231,34 @@ internal static class ScamAnalyzerTests
         {
             failures++;
             Console.Error.WriteLine("FALHOU [conditional-payment] o montante, a condição e a explicação não foram associados.");
+        }
+
+        string[] conditionalPaymentVariants =
+        {
+            "continue enviAnDo 45$ para usar o nosso app",
+            "Enviar 45 USD para continuar a usar a aplicação.",
+            "Envie $45 para desbloquear a conta.",
+            "Pagando 45€ para ativar o serviço.",
+            "Transferrindo 45 EUR para receber acesso.",
+            "Continue envinando 45 euros para usar o app."
+        };
+        foreach (string variant in conditionalPaymentVariants)
+        {
+            ScamAnalysisResult analysis = ScamAnalyzer.Analyze(variant);
+            if (analysis.RiskLevel != ScamRiskLevel.Moderate ||
+                analysis.Score <= 0 ||
+                !analysis.Signals.Any(signal => signal.Id == "payment-request") ||
+                !analysis.Signals.Any(signal =>
+                    signal.Id == "payment-condition-combination" &&
+                    signal.Evidence.Any(evidence =>
+                        evidence.Explanation.IndexOf("não prova", StringComparison.OrdinalIgnoreCase) >= 0)) ||
+                analysis.Summary.IndexOf("não provam", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                failures++;
+                Console.Error.WriteLine(
+                    "FALHOU [conditional-payment-variant] o pedido ou a incerteza não foram reconhecidos: {0}",
+                    variant);
+            }
         }
 
         Console.WriteLine(
