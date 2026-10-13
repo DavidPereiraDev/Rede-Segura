@@ -21,6 +21,12 @@ $appArguments = @(
   "/reference:System.Drawing.dll"
   "/out:$appOutputPath"
   $appSourcePath
+  (Join-Path $root "app-shell-controls.cs")
+  (Join-Path $root "analysis-result-section.cs")
+  (Join-Path $root "security-content-controls.cs")
+  (Join-Path $root "url-structure-analysis.cs")
+  (Join-Path $root "link-checker-control.cs")
+  (Join-Path $root "settings-about-controls.cs")
   (Join-Path $root "scam-analysis.cs")
 )
 & $compiler $appArguments

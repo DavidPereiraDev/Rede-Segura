@@ -71,15 +71,15 @@ A payment request alone does not automatically mean a message is fraudulent.
 
 ### 🌐 Suspicious URL Analysis
 
-The application examines URL characteristics locally, including:
+The application includes a separate URL-checking page that examines URL characteristics locally, including:
 
 - Shortened links.
 - IP-based URLs.
 - Potentially misleading domains.
 - Unusual domain structures.
-- Domains designed to resemble trusted services.
+- Internationalized domains and domains designed to resemble selected trusted services.
 
-**URLs are not automatically opened or contacted during analysis.**
+The checker uses a partial local list of common public suffixes and brand names. Its results are structural indicators only: **URLs are not opened, resolved, or contacted, and the results do not confirm that a site is safe or legitimate.**
 
 ### 🚦 Risk Classification
 
@@ -128,11 +128,20 @@ The project separates the user interface from the analysis engine, making the co
 ### Windows Application Highlights
 
 - Native desktop experience.
-- Dedicated message input area.
-- Risk assessment interface.
-- Clear explanations and recommendations.
+- Single-window sidebar navigation and contextual section header.
+- Two-column message and results dashboard with selectable example cards.
+- Message character count, explicit clipboard paste, and keyboard shortcuts.
+- Expandable analysis summary, signals and evidence, explanations, recommendations, and limitations.
+- Portuguese educational cards and practical safety guides.
+- Dedicated local URL-checking page with structural findings and limitations.
+- Settings for the current-session light or dark theme, plus privacy and application information pages.
+- Copyable analysis summary that excludes the original message and its excerpts.
+- Keyboard shortcuts: `Ctrl+Enter` to analyze, `Ctrl+L` to clear, and `Ctrl+Shift+C` to copy results.
+- Dark and light themes.
 - Local analysis engine.
 - Windows installer.
+
+The application keeps the header and navigation visible while the work area adapts to the available window size. The sidebar collapses on narrower windows, and the two-column analyzer remains side by side with scrolling when needed. Long pages and analysis details have scroll areas. The theme can be changed from the header or Settings page and is not persisted between sessions. Pasting and examples only fill the input field; analysis is never started automatically.
 
 ---
 
@@ -183,6 +192,12 @@ Rede-Segura/
 │   └── icon.svg
 │
 ├── rede-segura-app.cs
+├── app-shell-controls.cs
+├── analysis-result-section.cs
+├── security-content-controls.cs
+├── url-structure-analysis.cs
+├── link-checker-control.cs
+├── settings-about-controls.cs
 ├── scam-analysis.cs
 ├── windows-installer.cs
 │
@@ -192,11 +207,14 @@ Rede-Segura/
 ├── build-windows-installer.ps1
 ├── install-windows.ps1
 ├── test-analyzer.ps1
+├── test-url-analyzer.ps1
+├── test-ui.ps1
+├── tests/
+│   ├── scam-analyzer-tests.cs
+│   ├── url-structure-analyzer-tests.cs
+│   └── rede-segura-ui-tests.cs
 ├── servidor-local.ps1
 ├── testar-no-pc.bat
-│
-├── tests/
-│   └── scam-analyzer-tests.cs
 │
 └── README.md
 ```
@@ -286,17 +304,21 @@ The application returns an assessment containing the risk level, supporting evid
 
 ## 🧪 Testing
 
-The project includes a PowerShell-based testing workflow for the analysis engine.
+The project includes PowerShell-based tests for the message analyzer, URL analyzer, and Windows Forms navigation and layout.
 
 To execute the tests on Windows:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\test-analyzer.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\test-url-analyzer.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\test-ui.ps1
 ```
 
 The documented test suite covers scenarios such as:
 
 - Banking scams.
+- URL structure, IDN, shortened links, misleading subdomains, and malformed addresses.
+- Navigation, theme synchronization, and narrow/wide window layout.
 - Delivery scams.
 - Prize and reward scams.
 - Verification code requests.

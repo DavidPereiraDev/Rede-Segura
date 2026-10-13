@@ -7,6 +7,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
@@ -32,40 +33,66 @@ internal sealed class RedeSeguraApp : Form
     private readonly TextBox messageInput;
     private readonly Label characterCount;
     private readonly Button clearButton;
+    private readonly Button pasteButton;
+    private readonly Button copyResultButton;
     private readonly Button checkButton;
     private readonly Panel inputCard;
     private readonly Panel statusBadge;
     private readonly Label statusLabel;
     private readonly Label resultHeading;
     private readonly Label resultSummary;
-    private readonly Label messagePreview;
     private readonly FlowLayoutPanel resultDetails;
+    private readonly FlowLayoutPanel exampleButtons;
+    private readonly AnalysisResultSection[] analysisSections;
     private readonly Panel resultCard;
+    private readonly TableLayoutPanel inputCardContent;
+    private readonly TableLayoutPanel resultCardContent;
     private readonly TableLayoutPanel content;
     private readonly Panel body;
     private readonly TableLayoutPanel workspace;
     private readonly TableLayoutPanel inputColumn;
     private readonly Panel resultScroll;
+    private readonly TableLayoutPanel shell;
+    private readonly SidebarControl sidebar;
+    private readonly Label sectionIconLabel;
+    private readonly Label sectionTitleLabel;
+    private readonly Label sectionDescriptionLabel;
+    private readonly Panel placeholderView;
+    private readonly Label placeholderTitle;
+    private readonly Label placeholderDescription;
+    private readonly LearningControl learningControl;
+    private readonly SafetyGuideControl safetyGuideControl;
+    private readonly LinkCheckerControl linkCheckerControl;
+    private readonly SettingsControl settingsControl;
+    private readonly AboutControl aboutControl;
     private readonly Button themeButton;
     private readonly Panel resultAccent;
     private readonly Timer fadeTimer;
     private readonly Timer resultAnimationTimer;
     private readonly BackgroundWorker analysisWorker = new BackgroundWorker();
     private bool darkMode;
+    private bool sidebarCollapsed;
+    private AppSection activeSection = AppSection.Analyzer;
+    private ScamAnalysisResult displayedAnalysis;
     private int animationStep;
-    private string pendingAnalysisMessage;
 
     private RedeSeguraApp()
     {
         Text = "Rede Segura";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(800, 650);
-        ClientSize = new Size(920, 850);
+        Rectangle workingArea = Screen.PrimaryScreen.WorkingArea;
+        MinimumSize = new Size(
+            Math.Min(1320, Math.Max(320, workingArea.Width - 48)),
+            Math.Min(700, Math.Max(300, workingArea.Height - 48)));
+        ClientSize = new Size(
+            Math.Min(1400, Math.Max(320, workingArea.Width - 48)),
+            Math.Min(860, Math.Max(300, workingArea.Height - 48)));
         BackColor = BackgroundColor;
         Font = new Font("Segoe UI", 10F);
         AutoScaleMode = AutoScaleMode.Dpi;
         KeyPreview = true;
         Opacity = 0;
+        darkMode = true;
 
         Bitmap officialLogo = CreateOfficialLogoImage();
         IntPtr iconHandle = officialLogo.GetHicon();
@@ -94,8 +121,26 @@ internal sealed class RedeSeguraApp : Form
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 92F));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        Controls.Add(content);
-        SizeChanged += delegate { ResizeContent(); };
+
+        shell = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = DarkBackgroundColor,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            Tag = "background"
+        };
+        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 238F));
+        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        sidebar = new SidebarControl(officialLogo);
+        sidebar.SectionSelected += OnSectionSelected;
+        shell.Controls.Add(sidebar, 0, 0);
+        shell.Controls.Add(content, 1, 0);
+        Controls.Add(shell);
+        SizeChanged += delegate { UpdateShellLayout(); };
 
         body = new Panel
         {
@@ -116,7 +161,13 @@ internal sealed class RedeSeguraApp : Form
             Tag = "background"
         };
         body.Controls.Add(workspace);
-        body.SizeChanged += delegate { ResizeContent(); };
+        body.SizeChanged += delegate
+        {
+            if (activeSection == AppSection.Analyzer)
+            {
+                ResizeContent();
+            }
+        };
 
         inputColumn = new TableLayoutPanel
         {
@@ -129,21 +180,9 @@ internal sealed class RedeSeguraApp : Form
             Tag = "background"
         };
         inputColumn.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        inputColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        inputColumn.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        inputColumn.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        inputColumn.RowStyles.Add(new RowStyle(SizeType.Absolute, 190F));
         workspace.Controls.Add(inputColumn, 0, 0);
-
-        FlowLayoutPanel introduction = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            BackColor = BackgroundColor,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            Margin = new Padding(0, 0, 0, 14),
-            Padding = new Padding(0),
-            Tag = "background"
-        };
 
         Panel header = new Panel
         {
@@ -153,65 +192,146 @@ internal sealed class RedeSeguraApp : Form
             Padding = new Padding(22, 18, 16, 18),
             Tag = "header"
         };
-        PictureBox logo = new PictureBox
+        sectionIconLabel = new Label
         {
             Dock = DockStyle.Left,
-            Width = 50,
-            Height = 50,
-            SizeMode = PictureBoxSizeMode.Zoom,
-            Image = officialLogo,
+            Width = 52,
+            Text = "\u270e",
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.FromArgb(139, 221, 190),
+            Font = new Font("Segoe UI Symbol", 24F),
+            Tag = "header-icon"
+        };
+        Panel sectionInfo = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = BrandDarkColor,
+            Padding = new Padding(12, 2, 0, 0),
             Tag = "header"
         };
-        Panel brandInfo = new Panel { Dock = DockStyle.Fill, BackColor = BrandDarkColor, Tag = "header" };
-        brandInfo.Controls.Add(new Label
+        TableLayoutPanel headerText = new TableLayoutPanel
         {
-            Text = "Rede Segura",
-            AutoSize = true,
-            Location = new Point(16, 9),
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = Color.Transparent,
+            Margin = new Padding(0),
+            Padding = new Padding(0)
+        };
+        headerText.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        headerText.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        headerText.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
+        sectionTitleLabel = new Label
+        {
+            Text = "Analisador de mensagens",
+            AutoEllipsis = true,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 17F, FontStyle.Bold),
+            Margin = new Padding(0),
             Tag = "header-text"
-        });
-        brandInfo.Controls.Add(new Label
+        };
+        sectionDescriptionLabel = new Label
         {
-            Text = "Proteção contra burlas, com mais confiança",
-            AutoSize = true,
-            Location = new Point(18, 42),
+            Text = "Analise SMS, emails ou mensagens e identifique possíveis burlas.",
+            AutoEllipsis = true,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.FromArgb(216, 235, 224),
-            Font = new Font("Segoe UI", 9F),
+            Font = new Font("Segoe UI", 9.5F),
+            Margin = new Padding(1, 0, 0, 0),
             Tag = "header-muted"
-        });
-        themeButton = MakeButton("☾  Modo escuro", Color.FromArgb(36, 91, 70), Color.White, true);
+        };
+        headerText.Controls.Add(sectionTitleLabel, 0, 0);
+        headerText.Controls.Add(sectionDescriptionLabel, 0, 1);
+        sectionInfo.Controls.Add(headerText);
+        themeButton = MakeButton("☀  Modo claro", Color.FromArgb(36, 91, 70), Color.White, true);
         themeButton.Dock = DockStyle.Right;
         themeButton.Width = 142;
         themeButton.Tag = "header-button";
         themeButton.FlatAppearance.BorderSize = 0;
-        themeButton.AccessibleName = "Ativar modo escuro";
+        themeButton.AccessibleName = "Ativar modo claro";
         themeButton.Click += delegate { ToggleTheme(); };
         header.Controls.Add(themeButton);
-        header.Controls.Add(brandInfo);
-        header.Controls.Add(logo);
+        header.Controls.Add(sectionInfo);
+        header.Controls.Add(sectionIconLabel);
         content.Controls.Add(header, 0, 0);
 
-        Label eyebrow = MakeLabel("ANÁLISE PRIVADA NO SEU DISPOSITIVO", 9F, BrandColor, true);
-        eyebrow.Margin = new Padding(2, 0, 0, 8);
-        introduction.Controls.Add(eyebrow);
-
-        Label title = MakeLabel("Analise com calma. Decida com segurança.", 25F, TextColor, true);
-        title.Margin = new Padding(0, 0, 0, 7);
-        introduction.Controls.Add(title);
-
-        Label description = MakeLabel(
-            "Cole uma SMS, email ou mensagem para receber uma avaliação de risco, os sinais encontrados e passos práticos a seguir.",
-            10.5F, MutedColor, false);
-        description.Margin = new Padding(0, 0, 0, 23);
-        introduction.Controls.Add(description);
-        inputColumn.Controls.Add(introduction, 0, 0);
+        placeholderView = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = DarkBackgroundColor,
+            Padding = new Padding(32),
+            Visible = false,
+            Tag = "background"
+        };
+        TableLayoutPanel placeholderContent = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 2,
+            Location = new Point(32, 32),
+            BackColor = Color.Transparent
+        };
+        placeholderContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        placeholderContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        placeholderContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        placeholderTitle = MakeLabel("Secção selecionada", 22F, TextColor, true);
+        placeholderTitle.Margin = new Padding(0, 0, 0, 10);
+        placeholderDescription = MakeLabel(
+            "Esta área será apresentada nesta janela. Pode regressar ao analisador através da navegação.",
+            11F, MutedColor, false);
+        placeholderDescription.MaximumSize = new Size(680, 0);
+        placeholderContent.Controls.Add(placeholderTitle, 0, 0);
+        placeholderContent.Controls.Add(placeholderDescription, 0, 1);
+        placeholderView.Controls.Add(placeholderContent);
+        body.Controls.Add(placeholderView);
+        learningControl = new LearningControl { Visible = false };
+        safetyGuideControl = new SafetyGuideControl { Visible = false };
+        linkCheckerControl = new LinkCheckerControl { Visible = false };
+        settingsControl = new SettingsControl { Visible = false };
+        aboutControl = new AboutControl { Visible = false };
+        settingsControl.ThemeSelected += delegate(object sender, ThemeSelectionEventArgs e)
+        {
+            SetTheme(e.DarkMode);
+        };
+        body.Controls.Add(learningControl);
+        body.Controls.Add(safetyGuideControl);
+        body.Controls.Add(linkCheckerControl);
+        body.Controls.Add(settingsControl);
+        body.Controls.Add(aboutControl);
 
         inputCard = MakeCard(300);
-        inputCard.Dock = DockStyle.Top;
-        inputCard.Controls.Add(MakeLabel("Mensagem recebida", 15F, TextColor, true, 20, 18));
-        inputCard.Controls.Add(MakeLabel("A análise é privada. Não inclua palavras-passe, códigos ou dados bancários.", 9.5F, MutedColor, false, 20, 47));
+        inputCard.Dock = DockStyle.Fill;
+        inputCardContent = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            ColumnCount = 1,
+            RowCount = 6,
+            Padding = new Padding(20),
+            Margin = new Padding(0),
+            Tag = "card-content"
+        };
+        inputCardContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        inputCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        inputCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        inputCardContent.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        inputCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        inputCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        inputCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        inputCard.Controls.Add(inputCardContent);
+        Label messageTitle = MakeLabel("1. Mensagem para analisar", 15F, TextColor, true);
+        messageTitle.Margin = new Padding(0, 0, 0, 7);
+        inputCardContent.Controls.Add(messageTitle, 0, 0);
+        Label messageHint = MakeLabel(
+            "Cole uma mensagem suspeita. Não inclua palavras-passe, códigos ou dados bancários.",
+            9.5F, MutedColor, false);
+        messageHint.Margin = new Padding(0, 0, 0, 10);
+        messageHint.MaximumSize = new Size(440, 0);
+        inputCardContent.Controls.Add(messageHint, 0, 1);
 
         messageInput = new TextBox
         {
@@ -223,9 +343,9 @@ internal sealed class RedeSeguraApp : Form
             Font = new Font("Segoe UI", 11F),
             BackColor = Color.FromArgb(250, 252, 250),
             BorderStyle = BorderStyle.FixedSingle,
-            Location = new Point(20, 77),
-            Size = new Size(650, 112),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Dock = DockStyle.Fill,
+            MinimumSize = new Size(0, 90),
+            Margin = new Padding(0, 0, 0, 8),
             Tag = "input",
             AccessibleName = "Mensagem para analisar",
             AccessibleDescription = "Cole ou escreva uma mensagem suspeita"
@@ -235,97 +355,221 @@ internal sealed class RedeSeguraApp : Form
             int length = messageInput.Text.Length;
             characterCount.Text = length > ScamAnalyzer.MaximumMessageLength
                 ? "O limite de 20 000 caracteres foi ultrapassado; reduza o texto antes de analisar."
-                : length == 0
-                    ? "A mensagem fica apenas neste dispositivo."
-                    : length + (length == 1 ? " carácter" : " caracteres");
+                : length + (length == 1 ? " carácter" : " caracteres");
             characterCount.Tag = "muted";
             characterCount.ForeColor = darkMode ? DarkMutedColor : MutedColor;
-            if (messagePreview.Text.Length > 0)
+            if (displayedAnalysis != null)
             {
                 ResetResult();
             }
         };
-        messageInput.KeyDown += delegate(object sender, KeyEventArgs e)
-        {
-            if (e.Control && e.KeyCode == Keys.Enter)
-            {
-                e.SuppressKeyPress = true;
-                AnalyzeMessage();
-            }
-        };
-        inputCard.Controls.Add(messageInput);
+        inputCardContent.Controls.Add(messageInput, 0, 2);
 
-        characterCount = MakeLabel("A mensagem fica apenas neste dispositivo.", 9F, MutedColor, false, 20, 198);
-        characterCount.MaximumSize = new Size(360, 0);
+        characterCount = MakeLabel("0 caracteres", 9F, MutedColor, false);
+        characterCount.MaximumSize = new Size(440, 0);
         characterCount.AutoEllipsis = true;
-        inputCard.Controls.Add(characterCount);
+        characterCount.Margin = new Padding(0, 0, 0, 10);
+        inputCardContent.Controls.Add(characterCount, 0, 3);
 
-        clearButton = MakeButton("Limpar", Color.White, BrandColor, false);
+        clearButton = MakeButton("Limpar mensagem", Color.White, BrandColor, false);
         clearButton.FlatAppearance.BorderColor = CardBorderColor;
         clearButton.FlatAppearance.BorderSize = 1;
-        clearButton.Location = new Point(160, 191);
-        clearButton.Size = new Size(96, 36);
-        clearButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        clearButton.Size = new Size(150, 36);
+        clearButton.Margin = new Padding(0, 0, 0, 10);
         clearButton.AccessibleName = "Limpar mensagem";
         clearButton.Click += delegate
         {
-            messageInput.Clear();
-            messageInput.Focus();
+            ClearMessage();
         };
-        inputCard.Controls.Add(clearButton);
+        inputCardContent.Controls.Add(clearButton, 0, 4);
 
-        checkButton = MakeButton("Analisar mensagem", BrandColor, Color.White, true);
+        checkButton = MakeButton("Analisar mensagem    Ctrl + Enter", BrandColor, Color.White, true);
         checkButton.Tag = "button-primary";
         checkButton.FlatAppearance.BorderSize = 0;
         checkButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(19, 91, 68);
         checkButton.FlatAppearance.MouseDownBackColor = BrandDarkColor;
-        checkButton.Location = new Point(20, 237);
-        checkButton.Size = new Size(650, 48);
-        checkButton.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        checkButton.Dock = DockStyle.Fill;
+        checkButton.Height = 46;
+        checkButton.Margin = new Padding(0);
         checkButton.AccessibleName = "Enviar mensagem para análise";
         checkButton.Click += delegate { AnalyzeMessage(); };
-        inputCard.Controls.Add(checkButton);
+        inputCardContent.Controls.Add(checkButton, 0, 5);
         AcceptButton = checkButton;
-        inputColumn.Controls.Add(inputCard, 0, 1);
+        inputColumn.Controls.Add(inputCard, 0, 0);
+
+        FlowLayoutPanel messageActions = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = Color.Transparent,
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = new Padding(0, 0, 0, 10),
+            Padding = new Padding(0),
+            Tag = "card-content"
+        };
+        pasteButton = MakeButton("Colar mensagem", Color.White, BrandColor, false);
+        pasteButton.Size = new Size(132, 34);
+        pasteButton.Margin = new Padding(0, 0, 6, 4);
+        pasteButton.FlatAppearance.BorderColor = CardBorderColor;
+        pasteButton.FlatAppearance.BorderSize = 1;
+        pasteButton.AccessibleName = "Colar mensagem da área de transferência";
+        pasteButton.Click += delegate { PasteMessage(); };
+        messageActions.Controls.Add(pasteButton);
+
+        clearButton.Size = new Size(150, 34);
+        clearButton.Margin = new Padding(0, 0, 0, 4);
+        messageActions.Controls.Add(clearButton);
+        inputCardContent.Controls.Add(messageActions, 0, 4);
+        inputCardContent.RowStyles[4] = new RowStyle(SizeType.AutoSize);
+        inputCardContent.RowStyles[5] = new RowStyle(SizeType.AutoSize);
+
+        Panel exampleCard = MakeCard(190);
+        exampleCard.Dock = DockStyle.Fill;
+        exampleCard.Margin = new Padding(0, 10, 0, 0);
+        TableLayoutPanel exampleCardContent = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(16, 12, 16, 10),
+            Margin = new Padding(0),
+            Tag = "card-content"
+        };
+        exampleCardContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        exampleCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        exampleCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        exampleCardContent.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        exampleCard.Controls.Add(exampleCardContent);
+        Label examplesTitle = MakeLabel("Exemplos de mensagens", 12F, TextColor, true);
+        examplesTitle.Margin = new Padding(0, 0, 0, 3);
+        exampleCardContent.Controls.Add(examplesTitle, 0, 0);
+        Label examplesHint = MakeLabel(
+            "Selecione um exemplo para o colocar no campo acima.",
+            8.5F, MutedColor, false);
+        examplesHint.Margin = new Padding(0, 0, 0, 5);
+        exampleCardContent.Controls.Add(examplesHint, 0, 1);
+        exampleButtons = new FlowLayoutPanel
+        {
+            AutoScroll = true,
+            BackColor = Color.Transparent,
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            WrapContents = true,
+            Tag = "card-content"
+        };
+        string[] exampleLabels =
+        {
+            "Burla bancária\n(SMS)",
+            "Encomenda\nsuspeita",
+            "Pedido de\ncódigo",
+            "Mensagem legítima",
+            "Mensagem inconclusiva"
+        };
+        for (int index = 1; index <= 5; index++)
+        {
+            int selectedExample = index;
+            Button exampleButton = MakeButton(
+                exampleLabels[index - 1], Color.White, BrandColor, false);
+            exampleButton.Size = new Size(124, 48);
+            exampleButton.Margin = new Padding(0, 0, 7, 5);
+            exampleButton.FlatAppearance.BorderColor = CardBorderColor;
+            exampleButton.FlatAppearance.BorderSize = 1;
+            exampleButton.AccessibleName = "Experimentar exemplo: " +
+                exampleLabels[index - 1].Replace("\n", " ");
+            exampleButton.Click += delegate
+            {
+                string example = GetExampleMessage(selectedExample);
+                if (example != null)
+                {
+                    messageInput.Text = example;
+                    messageInput.Focus();
+                }
+            };
+            exampleButtons.Controls.Add(exampleButton);
+        }
+        exampleCardContent.Controls.Add(exampleButtons, 0, 2);
+        inputColumn.Controls.Add(exampleCard, 0, 1);
 
         resultCard = MakeCard(300);
         resultCard.Dock = DockStyle.Fill;
-        resultCard.Margin = new Padding(12, 0, 0, 0);
-        resultCard.Controls.Add(MakeLabel("RESULTADO DA ANÁLISE", 9F, MutedColor, true, 20, 19));
+        resultCard.Margin = new Padding(10, 0, 0, 0);
+        resultCardContent = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            ColumnCount = 1,
+            RowCount = 5,
+            Padding = new Padding(20),
+            Margin = new Padding(0),
+            Tag = "card-content"
+        };
+        resultCardContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        resultCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        resultCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        resultCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        resultCardContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        resultCardContent.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        resultCard.Controls.Add(resultCardContent);
+        FlowLayoutPanel resultToolbar = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = Color.Transparent,
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = new Padding(0, 0, 0, 8),
+            Padding = new Padding(0),
+            Tag = "card-content"
+        };
+        Label resultTitle = MakeLabel("2. Resultado da análise", 13F, TextColor, true);
+        resultTitle.Margin = new Padding(0, 4, 8, 4);
+        resultToolbar.Controls.Add(resultTitle);
+        copyResultButton = MakeButton("Copiar resultado", Color.White, BrandColor, false);
+        copyResultButton.Size = new Size(142, 32);
+        copyResultButton.Margin = new Padding(0, 0, 0, 4);
+        copyResultButton.FlatAppearance.BorderColor = CardBorderColor;
+        copyResultButton.FlatAppearance.BorderSize = 1;
+        copyResultButton.AccessibleName = "Copiar resumo do resultado da análise";
+        copyResultButton.Enabled = false;
+        copyResultButton.Click += delegate { CopyAnalysisResult(); };
+        resultToolbar.Controls.Add(copyResultButton);
+        resultCardContent.Controls.Add(resultToolbar, 0, 0);
 
         resultAccent = new Panel
         {
             BackColor = BrandColor,
-            Location = new Point(0, 0),
-            Size = new Size(5, resultCard.Height)
+            Location = Point.Empty,
+            Size = new Size(5, resultCard.Height),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom
         };
         resultCard.Controls.Add(resultAccent);
 
         statusBadge = new Panel
         {
             BackColor = Color.FromArgb(232, 243, 237),
-            Location = new Point(20, 46),
             Size = new Size(202, 28),
+            Margin = new Padding(0, 0, 0, 10),
             Tag = "status-ok"
         };
         statusLabel = MakeLabel("PRONTA PARA ANALISAR", 8F, BrandColor, true, 9, 6);
         statusBadge.Controls.Add(statusLabel);
-        resultCard.Controls.Add(statusBadge);
+        resultCardContent.Controls.Add(statusBadge, 0, 1);
 
-        resultHeading = MakeLabel(
-            "O resultado aparecerá aqui",
-            17F, TextColor, true, 20, 86);
-        resultCard.Controls.Add(resultHeading);
+        resultHeading = MakeLabel("Pronto para analisar", 17F, TextColor, true);
+        resultHeading.Margin = new Padding(0, 0, 0, 6);
+        resultCardContent.Controls.Add(resultHeading, 0, 2);
 
         resultSummary = MakeLabel(
-            "Cole uma mensagem para ver a avaliação, os sinais encontrados e recomendações práticas.",
-            10F, MutedColor, false, 20, 119);
-        resultCard.Controls.Add(resultSummary);
-
-        messagePreview = MakeLabel("", 9.5F, MutedColor, false, 20, 164);
-        messagePreview.AutoEllipsis = true;
-        messagePreview.MaximumSize = new Size(680, 48);
-        resultCard.Controls.Add(messagePreview);
+            "Cole uma mensagem no campo à esquerda e escolha Analisar mensagem para ver os resultados.",
+            10F, MutedColor, false);
+        resultSummary.Margin = new Padding(0, 0, 0, 8);
+        resultCardContent.Controls.Add(resultSummary, 0, 3);
 
         resultDetails = new FlowLayoutPanel
         {
@@ -338,16 +582,29 @@ internal sealed class RedeSeguraApp : Form
             Padding = new Padding(0),
             Tag = "card-content"
         };
+        analysisSections = new AnalysisResultSection[]
+        {
+            new AnalysisResultSection("Resumo da análise", "A análise ainda não foi executada."),
+            new AnalysisResultSection("Sinais identificados", "Os sinais encontrados serão apresentados após a análise."),
+            new AnalysisResultSection("Explicação e contexto", "As explicações do motor serão apresentadas após a análise."),
+            new AnalysisResultSection("Recomendações de segurança", "As recomendações serão apresentadas após a análise."),
+            new AnalysisResultSection("Limitações da análise", "As limitações serão apresentadas após a análise.")
+        };
+        foreach (AnalysisResultSection section in analysisSections)
+        {
+            resultDetails.Controls.Add(section);
+        }
         resultScroll = new Panel
         {
-            Location = new Point(20, 213),
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+            Dock = DockStyle.Fill,
             AutoScroll = true,
             BackColor = Color.White,
+            Margin = new Padding(0),
             Tag = "card"
         };
         resultScroll.Controls.Add(resultDetails);
-        resultCard.Controls.Add(resultScroll);
+        resultCardContent.Controls.Add(resultScroll, 0, 4);
+        workspace.Controls.Add(inputColumn, 0, 0);
         workspace.Controls.Add(resultCard, 1, 0);
 
         Label privacy = MakeLabel(
@@ -397,6 +654,39 @@ internal sealed class RedeSeguraApp : Form
             }
         };
         Shown += delegate { fadeTimer.Start(); };
+        KeyDown += delegate(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true;
+                if (activeSection == AppSection.Analyzer)
+                {
+                    AnalyzeMessage();
+                }
+                else if (activeSection == AppSection.LinkChecker)
+                {
+                    linkCheckerControl.AnalyzeAddress();
+                }
+            }
+            else if (e.Control && !e.Shift && e.KeyCode == Keys.L)
+            {
+                e.SuppressKeyPress = true;
+                if (activeSection == AppSection.Analyzer)
+                {
+                    ClearMessage();
+                }
+                else if (activeSection == AppSection.LinkChecker)
+                {
+                    linkCheckerControl.ClearAddress();
+                }
+            }
+            else if (e.Control && e.Shift && e.KeyCode == Keys.C &&
+                activeSection == AppSection.Analyzer)
+            {
+                e.SuppressKeyPress = true;
+                CopyAnalysisResult();
+            }
+        };
         FormClosed += delegate
         {
             fadeTimer.Dispose();
@@ -412,10 +702,10 @@ internal sealed class RedeSeguraApp : Form
             checkButton.Enabled = true;
             messageInput.Enabled = true;
             clearButton.Enabled = true;
-            checkButton.Text = "Analisar mensagem";
+            pasteButton.Enabled = true;
+            checkButton.Text = "Analisar mensagem    Ctrl + Enter";
             if (e.Error != null)
             {
-                pendingAnalysisMessage = null;
                 characterCount.Text = "Não foi possível analisar a mensagem. Reveja o texto e tente novamente.";
                 characterCount.Tag = "risk-danger";
                 characterCount.ForeColor = darkMode ? Color.FromArgb(255, 150, 137) : DangerColor;
@@ -431,13 +721,15 @@ internal sealed class RedeSeguraApp : Form
         };
 
         ApplyTheme();
-        ResizeContent();
+        sidebar.SetActiveSection(AppSection.Analyzer);
+        UpdateShellLayout();
     }
 
     private void ResizeContent()
     {
         if (body == null || workspace == null || inputColumn == null ||
-            resultCard == null || messageInput == null)
+            resultCard == null || messageInput == null || inputCardContent == null ||
+            resultCardContent == null || resultScroll == null)
         {
             return;
         }
@@ -450,101 +742,54 @@ internal sealed class RedeSeguraApp : Form
 
         int availableWidth = Math.Max(0, body.ClientSize.Width - body.Padding.Horizontal);
         int availableHeight = Math.Max(0, body.ClientSize.Height - body.Padding.Vertical);
-        int breakpoint = (int)Math.Round(1040F * dpiScale);
-        bool useColumns = availableWidth >= breakpoint;
-        int workspaceWidth = Math.Min(availableWidth, (int)Math.Round(1680F * dpiScale));
+        int minimumWorkspaceWidth = (int)Math.Round(1060F * dpiScale);
+        int minimumWorkspaceHeight = (int)Math.Round(520F * dpiScale);
+        int workspaceWidth = Math.Max(availableWidth, minimumWorkspaceWidth);
+        int workspaceHeight = Math.Max(availableHeight, minimumWorkspaceHeight);
 
         workspace.SuspendLayout();
-        workspace.Controls.Clear();
-        workspace.ColumnStyles.Clear();
-        workspace.RowStyles.Clear();
         workspace.Margin = new Padding(0);
         workspace.Width = workspaceWidth;
-        workspace.Location = new Point(
-            Math.Max(0, (availableWidth - workspaceWidth) / 2),
-            0);
-
-        if (useColumns)
-        {
-            body.AutoScroll = false;
-            workspace.ColumnCount = 2;
-            workspace.RowCount = 1;
-            workspace.Dock = DockStyle.None;
-            workspace.Anchor = AnchorStyles.Top;
-            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 46F));
-            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 54F));
-            workspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            workspace.Height = availableHeight;
-            inputColumn.Margin = new Padding(0, 0, 12, 0);
-            resultCard.Margin = new Padding(12, 0, 0, 0);
-            workspace.Controls.Add(inputColumn, 0, 0);
-            workspace.Controls.Add(resultCard, 1, 0);
-        }
-        else
-        {
-            body.AutoScroll = true;
-            workspace.ColumnCount = 1;
-            workspace.RowCount = 2;
-            workspace.Dock = DockStyle.None;
-            workspace.Anchor = AnchorStyles.Top | AnchorStyles.Left;
-            workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            FlowLayoutPanel intro = inputColumn.Controls[0] as FlowLayoutPanel;
-            int introHeight = intro == null
-                ? 0
-                : intro.GetPreferredSize(new Size(workspaceWidth, 0)).Height;
-            int inputColumnHeight = introHeight + 14 + inputCard.Height;
-            int resultHeight = Math.Max(320, (int)Math.Round(380F * dpiScale));
-            workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, inputColumnHeight + 20));
-            workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, resultHeight));
-            int stackedHeight = inputColumnHeight + resultHeight + 20;
-            workspace.Height = Math.Max(availableHeight, stackedHeight);
-            inputColumn.Height = inputColumnHeight;
-            inputColumn.Margin = new Padding(0, 0, 0, 20);
-            resultCard.Margin = new Padding(0);
-            workspace.Controls.Add(inputColumn, 0, 0);
-            workspace.Controls.Add(resultCard, 0, 1);
-        }
+        workspace.Height = workspaceHeight;
+        workspace.Location = Point.Empty;
+        workspace.Dock = DockStyle.None;
+        workspace.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+        workspace.ColumnCount = 2;
+        workspace.RowCount = 1;
+        body.AutoScroll = workspaceWidth > availableWidth || workspaceHeight > availableHeight;
+        workspace.ColumnStyles.Clear();
+        workspace.RowStyles.Clear();
+        workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45F));
+        workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        inputColumn.Dock = DockStyle.Fill;
+        inputColumn.Margin = new Padding(0, 0, 10, 0);
+        resultCard.Dock = DockStyle.Fill;
+        resultCard.Margin = new Padding(10, 0, 0, 0);
 
         workspace.ResumeLayout(true);
 
-        int inputWidth = Math.Max(200, inputCard.ClientSize.Width - inputCard.Padding.Horizontal - 40);
-        messageInput.Width = inputWidth;
-        checkButton.Width = inputWidth;
-        clearButton.Location = new Point(
-            Math.Max(20, inputCard.ClientSize.Width - clearButton.Width - 20),
-            191);
-        characterCount.MaximumSize = new Size(Math.Max(100, inputWidth - 116), 0);
-
-        int resultWidth = Math.Max(200, resultCard.ClientSize.Width - resultCard.Padding.Horizontal - 40);
-        int detailHeight = Math.Max(80, resultCard.ClientSize.Height - 235);
-        resultScroll.Size = new Size(resultWidth, detailHeight);
+        int inputWidth = Math.Max(180, inputCardContent.ClientSize.Width - inputCardContent.Padding.Horizontal);
+        messageInput.MinimumSize = new Size(0, (int)Math.Round(90F * dpiScale));
+        characterCount.MaximumSize = new Size(inputWidth, 0);
+        int resultWidth = Math.Max(180, resultCardContent.ClientSize.Width - resultCardContent.Padding.Horizontal);
         resultAccent.Height = resultCard.ClientSize.Height;
         statusBadge.Width = Math.Min(330, resultWidth);
         resultHeading.MaximumSize = new Size(resultWidth, 0);
         resultSummary.MaximumSize = new Size(resultWidth, 0);
-        messagePreview.MaximumSize = new Size(resultWidth, 48);
-        resultDetails.Width = resultWidth;
+        int detailWidth = Math.Max(100, resultScroll.ClientSize.Width -
+            SystemInformation.VerticalScrollBarWidth - 8);
+        resultDetails.Width = detailWidth;
         foreach (Control item in resultDetails.Controls)
         {
-            item.MaximumSize = new Size(resultWidth, 0);
-            item.Width = resultWidth;
-        }
-
-        foreach (Control control in inputColumn.Controls)
-        {
-            FlowLayoutPanel flow = control as FlowLayoutPanel;
-            if (flow != null)
+            AnalysisResultSection section = item as AnalysisResultSection;
+            if (section != null)
             {
-                foreach (Control item in flow.Controls)
-                {
-                    Label label = item as Label;
-                    if (label != null)
-                    {
-                        label.MaximumSize = new Size(Math.Max(200, workspaceWidth - 16), 0);
-                    }
-                }
+                section.Width = detailWidth;
             }
         }
+
+        exampleButtons.Width = inputWidth;
 
         Control footer = content.GetControlFromPosition(0, 2);
         FlowLayoutPanel footerFlow = footer as FlowLayoutPanel;
@@ -563,9 +808,138 @@ internal sealed class RedeSeguraApp : Form
         content.PerformLayout();
     }
 
+    private void UpdateShellLayout()
+    {
+        if (shell == null || sidebar == null)
+        {
+            return;
+        }
+
+        bool collapseSidebar = ClientSize.Width < 1344;
+        if (sidebarCollapsed != collapseSidebar)
+        {
+            sidebarCollapsed = collapseSidebar;
+            sidebar.SetCollapsed(sidebarCollapsed);
+            shell.ColumnStyles[0].Width = sidebarCollapsed ? 68F : 238F;
+        }
+
+        if (activeSection == AppSection.Analyzer)
+        {
+            ResizeContent();
+        }
+    }
+
+    private void OnSectionSelected(object sender, AppSectionEventArgs e)
+    {
+        string title;
+        string description;
+        string icon;
+        switch (e.Section)
+        {
+            case AppSection.Analyzer:
+                title = "Analisador de mensagens";
+                description = "Analise SMS, emails ou mensagens e identifique possíveis burlas.";
+                icon = "\u270e";
+                break;
+            case AppSection.LinkChecker:
+                title = "Verificar links";
+                description = "Avalie localmente sinais suspeitos na estrutura de um endereço.";
+                icon = "\u2197";
+                break;
+            case AppSection.Learning:
+                title = "Aprender";
+                description = "Conheça sinais comuns de burla e formas de se proteger.";
+                icon = "\u25c7";
+                break;
+            case AppSection.SafetyGuide:
+                title = "Guia de segurança";
+                description = "Consulte passos prudentes para situações do dia a dia.";
+                icon = "\u25a4";
+                break;
+            case AppSection.Settings:
+                title = "Definições";
+                description = "Personalize a apresentação e reveja a privacidade.";
+                icon = "\u2699";
+                break;
+            default:
+                title = "Sobre a Rede Segura";
+                description = "Informações sobre a aplicação e a análise local.";
+                icon = "\u24d8";
+                break;
+        }
+
+        sectionTitleLabel.Text = title;
+        sectionDescriptionLabel.Text = description;
+        sectionIconLabel.Text = icon;
+        placeholderTitle.Text = title;
+        placeholderDescription.Text = e.Section == AppSection.Analyzer
+            ? "Analise uma mensagem nesta área."
+            : "Esta secção será implementada na etapa correspondente. A navegação mantém-se nesta janela.";
+
+        bool showAnalyzer = e.Section == AppSection.Analyzer;
+        bool showLearning = e.Section == AppSection.Learning;
+        bool showSafetyGuide = e.Section == AppSection.SafetyGuide;
+        bool showLinkChecker = e.Section == AppSection.LinkChecker;
+        bool showSettings = e.Section == AppSection.Settings;
+        bool showAbout = e.Section == AppSection.About;
+        workspace.Visible = showAnalyzer;
+        placeholderView.Visible = !showAnalyzer && !showLearning &&
+            !showSafetyGuide && !showLinkChecker && !showSettings && !showAbout;
+        learningControl.Visible = showLearning;
+        safetyGuideControl.Visible = showSafetyGuide;
+        linkCheckerControl.Visible = showLinkChecker;
+        settingsControl.Visible = showSettings;
+        aboutControl.Visible = showAbout;
+        sidebar.SetActiveSection(e.Section);
+        activeSection = e.Section;
+        AcceptButton = showAnalyzer
+            ? (IButtonControl)checkButton
+            : showLinkChecker
+                ? linkCheckerControl.AnalyzeButton
+                : null;
+        body.AutoScroll = false;
+        if (showAnalyzer)
+        {
+            ResizeContent();
+        }
+        else
+        {
+            if (showLearning)
+            {
+                learningControl.BringToFront();
+            }
+            else if (showSafetyGuide)
+            {
+                safetyGuideControl.BringToFront();
+            }
+            else if (showLinkChecker)
+            {
+                linkCheckerControl.BringToFront();
+            }
+            else if (showSettings)
+            {
+                settingsControl.BringToFront();
+            }
+            else if (showAbout)
+            {
+                aboutControl.BringToFront();
+            }
+            else
+            {
+                placeholderView.BringToFront();
+            }
+            body.PerformLayout();
+        }
+    }
+
     private void ToggleTheme()
     {
-        darkMode = !darkMode;
+        SetTheme(!darkMode);
+    }
+
+    private void SetTheme(bool useDarkMode)
+    {
+        darkMode = useDarkMode;
         themeButton.Text = darkMode ? "☀  Modo claro" : "☾  Modo escuro";
         themeButton.AccessibleName = darkMode ? "Ativar modo claro" : "Ativar modo escuro";
         ApplyTheme();
@@ -580,6 +954,31 @@ internal sealed class RedeSeguraApp : Form
 
     private void ApplyThemeToControl(Control control)
     {
+        SidebarControl sidebarControl = control as SidebarControl;
+        if (sidebarControl != null)
+        {
+            sidebarControl.ApplyTheme(darkMode);
+            return;
+        }
+        SecurityContentPage securityPage = control as SecurityContentPage;
+        if (securityPage != null)
+        {
+            securityPage.ApplyTheme(darkMode);
+            return;
+        }
+        LinkCheckerControl linkPage = control as LinkCheckerControl;
+        if (linkPage != null)
+        {
+            linkPage.ApplyTheme(darkMode);
+            return;
+        }
+        SettingsControl settingsPage = control as SettingsControl;
+        if (settingsPage != null)
+        {
+            settingsPage.ApplyTheme(darkMode);
+            return;
+        }
+
         string role = control.Tag as string;
         Color accent = darkMode ? DarkBrandColor : BrandColor;
 
@@ -606,6 +1005,20 @@ internal sealed class RedeSeguraApp : Form
                 break;
             case "card":
             case "card-content":
+                control.BackColor = darkMode ? DarkCardColor : Color.White;
+                break;
+            case "result-section":
+                control.BackColor = darkMode ? DarkCardColor : Color.White;
+                ((AnalysisResultSection)control).ApplyTheme(darkMode);
+                break;
+            case "result-section-header":
+                control.BackColor = darkMode ? DarkCardColor : Color.White;
+                control.ForeColor = darkMode ? DarkTextColor : TextColor;
+                ((Button)control).FlatAppearance.MouseOverBackColor = darkMode
+                    ? Color.FromArgb(43, 56, 62)
+                    : Color.FromArgb(242, 247, 243);
+                break;
+            case "result-section-content":
                 control.BackColor = darkMode ? DarkCardColor : Color.White;
                 break;
             case "input":
@@ -708,16 +1121,168 @@ internal sealed class RedeSeguraApp : Form
         checkButton.Enabled = false;
         messageInput.Enabled = false;
         clearButton.Enabled = false;
+        pasteButton.Enabled = false;
         checkButton.Text = "A analisar…";
         characterCount.Text = "A análise é feita localmente. Aguarde um momento.";
         characterCount.Tag = "muted";
         characterCount.ForeColor = darkMode ? DarkMutedColor : MutedColor;
-        pendingAnalysisMessage = message;
         analysisWorker.RunWorkerAsync(message);
+    }
+
+    private void ClearMessage()
+    {
+        if (analysisWorker.IsBusy)
+        {
+            return;
+        }
+
+        messageInput.Clear();
+        ResetResult();
+        messageInput.Focus();
+    }
+
+    private void PasteMessage()
+    {
+        try
+        {
+            if (!Clipboard.ContainsText(TextDataFormat.UnicodeText))
+            {
+                characterCount.Text = "A área de transferência não contém texto.";
+                characterCount.Tag = "muted";
+                characterCount.ForeColor = darkMode ? DarkMutedColor : MutedColor;
+                return;
+            }
+
+            messageInput.Text = Clipboard.GetText(TextDataFormat.UnicodeText);
+            messageInput.Focus();
+        }
+        catch (ExternalException error)
+        {
+            characterCount.Text = "Não foi possível ler a área de transferência.";
+            characterCount.Tag = "risk-danger";
+            characterCount.ForeColor = darkMode ? Color.FromArgb(255, 150, 137) : DangerColor;
+            MessageBox.Show(
+                "Não foi possível aceder à área de transferência.\r\n\r\n" + error.Message,
+                "Erro ao colar mensagem",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private static string GetExampleMessage(int selectedIndex)
+    {
+        switch (selectedIndex)
+        {
+            case 1:
+                return "A sua conta bancária será bloqueada. Envie o código de acesso para evitar a suspensão.";
+            case 2:
+                return "A sua encomenda está retida. Pague uma taxa de entrega para receber a encomenda.";
+            case 3:
+                return "Envie o código de verificação que recebeu para confirmarmos a sua identidade.";
+            case 4:
+                return "A consulta está confirmada para terça-feira às 10:30. Pode alterar a marcação através da aplicação oficial.";
+            case 5:
+                return "Olá, tudo bem?";
+            default:
+                return null;
+        }
+    }
+
+    private void CopyAnalysisResult()
+    {
+        if (displayedAnalysis == null)
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(BuildAnalysisSummary());
+            characterCount.Text = "Resumo copiado. A mensagem original não foi incluída.";
+            characterCount.Tag = "muted";
+            characterCount.ForeColor = darkMode ? DarkMutedColor : MutedColor;
+        }
+        catch (ExternalException error)
+        {
+            MessageBox.Show(
+                "Não foi possível copiar o resultado para a área de transferência.\r\n\r\n" + error.Message,
+                "Erro ao copiar resultado",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private string BuildAnalysisSummary()
+    {
+        StringBuilder summary = new StringBuilder();
+        summary.AppendLine(statusLabel.Text);
+        summary.AppendLine("Pontuação heurística: " + displayedAnalysis.Score +
+            " pontos (não representa uma probabilidade).");
+        summary.AppendLine("Avaliação conclusiva: " +
+            (displayedAnalysis.IsConclusive ? "sim" : "não") + ".");
+        summary.AppendLine("Sinais encontrados: " + displayedAnalysis.Signals.Count);
+        summary.AppendLine();
+        summary.AppendLine("Resumo");
+        summary.AppendLine(displayedAnalysis.Summary);
+
+        if (displayedAnalysis.Signals.Count > 0)
+        {
+            summary.AppendLine();
+            summary.AppendLine("Sinais identificados");
+            foreach (AnalysisSignal signal in displayedAnalysis.Signals)
+            {
+                summary.AppendLine("• " + signal.Label + " (peso heurístico: " +
+                    signal.Weight + " pontos)");
+                foreach (AnalysisEvidence evidence in signal.Evidence)
+                {
+                    summary.AppendLine("  " + evidence.Explanation);
+                }
+            }
+        }
+        else
+        {
+            summary.AppendLine();
+            summary.AppendLine("Sinais identificados");
+            summary.AppendLine("O motor não identificou sinais nesta mensagem.");
+        }
+
+        summary.AppendLine();
+        summary.AppendLine("Explicação e contexto");
+        foreach (AnalysisSignal signal in displayedAnalysis.Signals)
+        {
+            foreach (AnalysisEvidence evidence in signal.Evidence)
+            {
+                summary.AppendLine("• " + signal.Label + ": " + evidence.Explanation);
+            }
+        }
+
+        summary.AppendLine();
+        summary.AppendLine("Recomendações de segurança");
+        if (displayedAnalysis.Recommendations.Count == 0)
+        {
+            summary.AppendLine("O motor não devolveu recomendações para esta análise.");
+        }
+        foreach (string recommendation in displayedAnalysis.Recommendations)
+        {
+            summary.AppendLine("• " + recommendation);
+        }
+        summary.AppendLine();
+        summary.AppendLine("Limitações da análise");
+        if (displayedAnalysis.Limitations.Count == 0)
+        {
+            summary.AppendLine("O motor não devolveu limitações para esta análise.");
+        }
+        foreach (string limitation in displayedAnalysis.Limitations)
+        {
+            summary.AppendLine("• " + limitation);
+        }
+        return summary.ToString().Trim();
     }
 
     private void DisplayAnalysis(ScamAnalysisResult analysis)
     {
+        displayedAnalysis = analysis;
+        copyResultButton.Enabled = true;
         Color levelColor;
         string levelLabel;
         string heading;
@@ -761,54 +1326,58 @@ internal sealed class RedeSeguraApp : Form
                     : "status-ok";
         resultHeading.Text = heading;
         resultHeading.Tag = themeRole;
-        resultSummary.Text = analysis.Summary +
-            "\r\nPontuação heurística: " + analysis.Score + " pontos (não representa uma probabilidade).";
-        string message = pendingAnalysisMessage ?? "";
-        messagePreview.Text = "Mensagem analisada: “" +
-            (message.Length > 400 ? message.Substring(0, 397) + "..." : message) + "”";
-        pendingAnalysisMessage = null;
-        resultDetails.Controls.Clear();
+        resultSummary.Text = analysis.Summary;
         resultAccent.BackColor = levelColor;
         resultAccent.Width = 1;
         animationStep = 0;
         resultAnimationTimer.Stop();
         resultAnimationTimer.Start();
 
-        if (analysis.Signals.Count > 0)
+        List<string> summaryItems = new List<string>
         {
-            AddResultSection("SINAIS E EVIDÊNCIAS", analysis.Signals.SelectMany(signal =>
-                signal.Evidence.Select(evidence =>
-                    "• " + signal.Label + "\r\n  “" + evidence.Excerpt + "”\r\n  " + evidence.Explanation)));
-        }
-        else
+            "Pontuação heurística: " + analysis.Score + " pontos (não representa uma probabilidade).",
+            "Sinais identificados: " + analysis.Signals.Count + ".",
+            "Avaliação conclusiva segundo as regras: " + (analysis.IsConclusive ? "sim." : "não.")
+        };
+        List<string> signalItems = new List<string>();
+        List<string> explanationItems = new List<string>();
+        foreach (AnalysisSignal signal in analysis.Signals)
         {
-            AddResultSection("SINAIS", new[]
+            signalItems.Add(signal.Label + " — peso heurístico: " + signal.Weight + " pontos.");
+            foreach (AnalysisEvidence evidence in signal.Evidence)
             {
-                analysis.RiskLevel == ScamRiskLevel.Inconclusive
-                    ? "Não foram encontrados sinais suficientes para uma avaliação."
-                    : "Não foram encontrados sinais comuns de risco."
-            });
+                signalItems.Add("Excerto: \"" + evidence.Excerpt + "\"");
+                explanationItems.Add(signal.Label + ": " + evidence.Explanation);
+            }
         }
-        AddResultSection("RECOMENDAÇÕES", analysis.Recommendations.Select(item => "• " + item));
-        AddResultSection("LIMITAÇÕES", analysis.Limitations.Select(item => "• " + item));
-
-        ApplyTheme();
-        body.ScrollControlIntoView(resultCard);
-    }
-
-    private void AddResultSection(string heading, IEnumerable<string> items)
-    {
-        Label title = MakeLabel(heading, 8.5F, BrandColor, true);
-        title.MaximumSize = new Size(Math.Max(560, resultCard.ClientSize.Width - 40), 0);
-        title.Margin = new Padding(0, 5, 0, 6);
-        resultDetails.Controls.Add(title);
-        foreach (string item in items)
+        if (signalItems.Count == 0)
         {
-            Label label = MakeLabel(item, 9.5F, TextColor, false);
-            label.MaximumSize = new Size(Math.Max(560, resultCard.ClientSize.Width - 40), 0);
-            label.Margin = new Padding(0, 0, 0, 7);
-            resultDetails.Controls.Add(label);
+            signalItems.Add("O motor não identificou sinais nesta mensagem.");
         }
+        if (explanationItems.Count == 0)
+        {
+            explanationItems.Add("O motor não forneceu explicações adicionais para esta análise.");
+        }
+
+        List<string> recommendationItems = new List<string>(analysis.Recommendations);
+        if (recommendationItems.Count == 0)
+        {
+            recommendationItems.Add("O motor não devolveu recomendações para esta análise.");
+        }
+        List<string> limitationItems = new List<string>(analysis.Limitations);
+        if (limitationItems.Count == 0)
+        {
+            limitationItems.Add("O motor não devolveu limitações para esta análise.");
+        }
+        analysisSections[0].SetItems(summaryItems);
+        analysisSections[1].SetItems(signalItems);
+        analysisSections[2].SetItems(explanationItems);
+        analysisSections[3].SetItems(recommendationItems);
+        analysisSections[4].SetItems(limitationItems);
+        analysisSections[0].SetExpanded(true);
+
+        ResizeContent();
+        ApplyTheme();
     }
 
     private void ResetResult()
@@ -816,13 +1385,17 @@ internal sealed class RedeSeguraApp : Form
         statusLabel.Text = "PRONTA PARA ANALISAR";
         statusLabel.Tag = "status-text";
         statusBadge.Tag = "status-ok";
-        resultHeading.Text = "O resultado aparecerá aqui";
+        displayedAnalysis = null;
+        copyResultButton.Enabled = false;
+        resultHeading.Text = "Pronto para analisar";
         resultHeading.Tag = "text";
-        resultSummary.Text = "Cole uma mensagem para ver a avaliação, os sinais encontrados e recomendações práticas.";
-        messagePreview.Text = "";
-        resultDetails.Controls.Clear();
-        resultCard.Height = 300;
-        resultAccent.Height = resultCard.Height;
+        resultSummary.Text = "Cole uma mensagem no campo à esquerda e escolha Analisar mensagem para ver os resultados.";
+        foreach (AnalysisResultSection section in analysisSections)
+        {
+            section.SetItems(new string[0]);
+            section.SetExpanded(false);
+        }
+        resultAccent.Height = resultCard.ClientSize.Height;
         resultAccent.BackColor = BrandColor;
         ApplyTheme();
     }
